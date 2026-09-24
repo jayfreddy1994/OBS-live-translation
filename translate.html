@@ -188,7 +188,6 @@
 
             /////////////////////////////////////////////////////////
             // API settings ---------------------------
-            var request = new XMLHttpRequest();
 
             // When the recognition result is returned ------------------
             recognition.onresult = function (event) {
@@ -203,21 +202,66 @@
                         // document.getElementById('speech_text-fg').innerHTML = recog_text;
 
                         if (gs_key != null) {
-                            query = TRANS_URL + '?text=' + recog_text + '&source=' + trans_sourcelang + '&target=' + trans_destlang;
-                            request.open('GET', query, true);
+                            // Use JSONP instead of XMLHttpRequest.
+                            // This avoids the CORS restriction between GitHub Pages
+                            // and Google Apps Script ContentService.
+                            var callbackName =
+                                'handleTranslation_' + Date.now() + '_' +
+                                Math.random().toString(36).substring(2, 8);
 
-                            request.onreadystatechange = function () {
-                                if (request.readyState === 4 && request.status === 200) {
-                                    // document.getElementById('speech_text-imb').innerHTML = recog_text;
-                                    // document.getElementById('speech_text-bg').innerHTML = recog_text;
-                                    // document.getElementById('speech_text-fg').innerHTML = recog_text;
-                                    document.getElementById('trans_text-imb').innerHTML = request.responseText;
-                                    document.getElementById('trans_text-bg').innerHTML = request.responseText;
-                                    document.getElementById('trans_text-fg').innerHTML = request.responseText;
+                            query = TRANS_URL
+                                + '?text=' + encodeURIComponent(recog_text)
+                                + '&source=' + encodeURIComponent(trans_sourcelang)
+                                + '&target=' + encodeURIComponent(trans_destlang)
+                                + '&callback=' + encodeURIComponent(callbackName);
+
+                            // Create the JSONP callback before loading the response.
+                            window[callbackName] = function (data) {
+                                try {
+                                    if (data && typeof data.translatedText !== 'undefined') {
+                                        document.getElementById('trans_text-imb').innerHTML =
+                                            data.translatedText;
+                                        document.getElementById('trans_text-bg').innerHTML =
+                                            data.translatedText;
+                                        document.getElementById('trans_text-fg').innerHTML =
+                                            data.translatedText;
+                                    } else {
+                                        console.error('Unexpected translation response:', data);
+                                    }
+                                } finally {
+                                    try {
+                                        delete window[callbackName];
+                                    } catch (e) {
+                                        window[callbackName] = undefined;
+                                    }
+
+                                    vr_function();
                                 }
+                            };
+
+                            // Load the Apps Script JSONP response as a script.
+                            var script = document.createElement('script');
+                            script.src = query;
+                            script.async = true;
+
+                            script.onload = function () {
+                                script.remove();
+                            };
+
+                            script.onerror = function (error) {
+                                console.error('Translation request failed:', error);
+                                script.remove();
+
+                                try {
+                                    delete window[callbackName];
+                                } catch (e) {
+                                    window[callbackName] = undefined;
+                                }
+
                                 vr_function();
-                            }
-                            request.send(null);
+                            };
+
+                            document.head.appendChild(script);
                         } else {
                             document.getElementById('speech_text-imb').innerHTML = recog_text;
                             document.getElementById('speech_text-bg').innerHTML = recog_text;

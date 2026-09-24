@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <link href="https://fonts.googleapis.com/css?family=M+PLUS+Rounded+1c&display=swap" rel="stylesheet">
 
-    <title>Live Translation - Auto Bilingual</title>
+    <title>Live Translation - OBS Clean Bilingual</title>
 
     <style type="text/css">
         /* cousine-regular - latin */
@@ -101,11 +101,62 @@
             /* -webkit-text-stroke: 0px #FFFFFF; */
         }
 
+        body {
+            background: #000000;
+            color: #ffffff;
+            overflow: hidden;
+        }
+
+        .translation-wrap {
+            width: 100%;
+            text-align: center;
+            padding: 0 16px;
+            box-sizing: border-box;
+        }
+
         .translation-line {
             position: relative;
             display: block;
             width: 100%;
-            min-height: 1.25em;
+            min-height: 1.15em;
+            line-height: 1.15;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+        .translation-line + .translation-line {
+            margin-top: 0.08em;
+        }
+
+        /* OBS clean mode: final translation only. */
+        #speech_text-bg,
+        #speech_text-fg,
+        #speech_text-imb {
+            display: none !important;
+        }
+
+        #translation_line1,
+        #translation_line2 {
+            display: none;
+        }
+
+        .stroke-single-bg,
+        .stroke-single-imb {
+            display: none !important;
+        }
+
+        .stroke-single-fg {
+            position: relative;
+            left: auto;
+            right: auto;
+            margin: 0;
+            color: #ffffff;
+            text-shadow:
+                2px 2px 0 #12304a,
+                -2px 2px 0 #12304a,
+                2px -2px 0 #12304a,
+                -2px -2px 0 #12304a,
+                0 3px 6px rgba(0, 0, 0, 0.65);
         }
     </style>
 
@@ -129,9 +180,26 @@
         }
 
         function setText(idBase, text) {
-            document.getElementById(idBase + '-imb').innerHTML = text;
-            document.getElementById(idBase + '-bg').innerHTML = text;
-            document.getElementById(idBase + '-fg').innerHTML = text;
+            var ids = ['-imb', '-bg', '-fg'];
+            ids.forEach(function (suffix) {
+                var el = document.getElementById(idBase + suffix);
+                if (el) el.innerHTML = text;
+            });
+        }
+
+        function setTranslationLine(lineNumber, text) {
+            var value = text || '';
+            document.getElementById('trans_text' + lineNumber + '-imb').innerHTML = value;
+            document.getElementById('trans_text' + lineNumber + '-bg').innerHTML = value;
+            document.getElementById('trans_text' + lineNumber + '-fg').innerHTML = value;
+
+            var line = document.getElementById('translation_line' + lineNumber);
+            line.style.display = value ? 'block' : 'none';
+        }
+
+        function clearTranslations() {
+            setTranslationLine(1, '');
+            setTranslationLine(2, '');
         }
 
         function normalizeTranslationLanguage(lang) {
@@ -143,7 +211,7 @@
             window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
             if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-                setText('speech_text', 'Speech Recognition is not supported in this browser.');
+                clearTranslations();
                 return;
             }
 
@@ -302,9 +370,7 @@
 
                         if (!recog_text) continue;
 
-                        // Hide the raw speech line once a final result is available.
-                        setText('speech_text', '');
-
+                        // OBS clean mode: never display the raw/interim speech text.
                         // One recognition -> two outputs. Source language is auto-detected upstream.
                         var resultsNeeded = 2;
                         var result1 = '';
@@ -313,8 +379,8 @@
                         function done() {
                             resultsNeeded -= 1;
                             if (resultsNeeded === 0) {
-                                setText('trans_text1', result1);
-                                setText('trans_text2', result2);
+                                setTranslationLine(1, result1);
+                                setTranslationLine(2, result2);
                             }
                         }
 
@@ -328,7 +394,7 @@
                             done();
                         });
                     } else {
-                        setText('speech_text', '<< ' + results[i][0].transcript + ' >>');
+                        // Interim speech is intentionally hidden for OBS.
                         flag_speech = 1;
                     }
                 }
@@ -356,27 +422,19 @@
     <div class="big" id="result_text">
         <table id="text_table" class="btm_table">
             <tr>
-                <td id="tbl_td" align="center" valign='bottom'>
-                    <div class="stroke-single-bg" id="speech_text-bg">
-                        [ TRANSLATING HERE ]
-                    </div>
-                    <div class="stroke-single-fg" id="speech_text-fg">
-                        [ TRANSLATING HERE ]
-                    </div>
-                    <div class="stroke-single-imb" id="speech_text-imb">
-                        [ TRANSLATING HERE ]
-                    </div>
+                <td id="tbl_td" align="center" valign="bottom">
+                    <div class="translation-wrap" id="translation_wrap">
+                        <div class="translation-line" id="translation_line1">
+                            <div class="stroke-single-bg" id="trans_text1-bg"></div>
+                            <div class="stroke-single-fg" id="trans_text1-fg"></div>
+                            <div class="stroke-single-imb" id="trans_text1-imb"></div>
+                        </div>
 
-                    <div class="translation-line" id="translation_line1">
-                        <div class="stroke-single-bg" id="trans_text1-bg"></div>
-                        <div class="stroke-single-fg" id="trans_text1-fg"></div>
-                        <div class="stroke-single-imb" id="trans_text1-imb"></div>
-                    </div>
-
-                    <div class="translation-line" id="translation_line2">
-                        <div class="stroke-single-bg" id="trans_text2-bg"></div>
-                        <div class="stroke-single-fg" id="trans_text2-fg"></div>
-                        <div class="stroke-single-imb" id="trans_text2-imb"></div>
+                        <div class="translation-line" id="translation_line2">
+                            <div class="stroke-single-bg" id="trans_text2-bg"></div>
+                            <div class="stroke-single-fg" id="trans_text2-fg"></div>
+                            <div class="stroke-single-imb" id="trans_text2-imb"></div>
+                        </div>
                     </div>
                 </td>
             </tr>
@@ -398,15 +456,7 @@
         document.getElementById("text_table").style.bottom = 0;
     }
 
-    // Adjust the background color
-    if (getParam('bgcolor') != null) {
-        document.getElementById("speech_text-imb").style.webkitTextStrokeColor = getParam('bgcolor');
-    }
-
-    if (getParam('st_width') != null) {
-        document.getElementById("speech_text-imb").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
-    }
-
+    // Speech/interim text is hidden in OBS clean mode.
 
     if (getParam('bgcolor') != null) {
         document.getElementById("trans_text1-imb").style.webkitTextStrokeColor = getParam('bgcolor');
@@ -419,7 +469,7 @@
     }
 
 
-    // Speech recognition result text
+    // Global subtitle styling
     if (getParam('font') != null) {
         document.getElementById("result_text").style.fontFamily = "'" + getParam('font') + "'";
     }
@@ -428,22 +478,13 @@
         document.getElementById("result_text").style.fontSize = getParam('size') + 'pt';
     }
 
-    if (getParam('color') != null) {
-        document.getElementById("speech_text-fg").style.color = getParam('color');
-    }
-
-    if (getParam('st_color') != null) {
-        document.getElementById("speech_text-bg").style.webkitTextStrokeColor = getParam('st_color');
-    }
-
     if (getParam('weight') != null) {
         document.getElementById("result_text").style.fontWeight = getParam('weight');
     }
 
-    if (getParam('st_width') != null) {
-        document.getElementById("speech_text-bg").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
-    }
-
+    // Clean OBS defaults: bright text with a dark blue shadow.
+    document.getElementById("trans_text1-fg").style.color = '#ffffff';
+    document.getElementById("trans_text2-fg").style.color = '#ffffff';
 
     // Translation result text
     if (getParam('color') != null) {

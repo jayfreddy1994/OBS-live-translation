@@ -188,7 +188,6 @@
 
             /////////////////////////////////////////////////////////
             // API settings ---------------------------
-
             // When the recognition result is returned ------------------
             recognition.onresult = function (event) {
                 var results = event.results;
@@ -202,10 +201,12 @@
                         // document.getElementById('speech_text-fg').innerHTML = recog_text;
 
                         if (gs_key != null) {
+
                             // Use JSONP instead of XMLHttpRequest.
                             // This avoids the CORS restriction between GitHub Pages
                             // and Google Apps Script ContentService.
-                            var callbackName =
+
+                            var prefixName =
                                 'handleTranslation_' + Date.now() + '_' +
                                 Math.random().toString(36).substring(2, 8);
 
@@ -213,26 +214,31 @@
                                 + '?text=' + encodeURIComponent(recog_text)
                                 + '&source=' + encodeURIComponent(trans_sourcelang)
                                 + '&target=' + encodeURIComponent(trans_destlang)
-                                + '&callback=' + encodeURIComponent(callbackName);
+                                + '&prefix=' + encodeURIComponent(prefixName);
 
-                            // Create the JSONP callback before loading the response.
-                            window[callbackName] = function (data) {
+                            // Google Apps Script JSONP calls this global function.
+                            window[prefixName] = function (data) {
+
                                 try {
+
                                     if (data && typeof data.translatedText !== 'undefined') {
-                                        document.getElementById('trans_text-imb').innerHTML =
-                                            data.translatedText;
-                                        document.getElementById('trans_text-bg').innerHTML =
-                                            data.translatedText;
-                                        document.getElementById('trans_text-fg').innerHTML =
-                                            data.translatedText;
+                                        document.getElementById('trans_text-imb').innerHTML = data.translatedText;
+                                        document.getElementById('trans_text-bg').innerHTML = data.translatedText;
+                                        document.getElementById('trans_text-fg').innerHTML = data.translatedText;
                                     } else {
                                         console.error('Unexpected translation response:', data);
                                     }
+
                                 } finally {
+
                                     try {
-                                        delete window[callbackName];
+                                        delete window[prefixName];
                                     } catch (e) {
-                                        window[callbackName] = undefined;
+                                        window[prefixName] = undefined;
+                                    }
+
+                                    if (script.parentNode) {
+                                        script.parentNode.removeChild(script);
                                     }
 
                                     vr_function();
@@ -244,24 +250,24 @@
                             script.src = query;
                             script.async = true;
 
-                            script.onload = function () {
-                                script.remove();
-                            };
-
                             script.onerror = function (error) {
                                 console.error('Translation request failed:', error);
-                                script.remove();
+
+                                if (script.parentNode) {
+                                    script.parentNode.removeChild(script);
+                                }
 
                                 try {
-                                    delete window[callbackName];
+                                    delete window[prefixName];
                                 } catch (e) {
-                                    window[callbackName] = undefined;
+                                    window[prefixName] = undefined;
                                 }
 
                                 vr_function();
                             };
 
                             document.head.appendChild(script);
+
                         } else {
                             document.getElementById('speech_text-imb').innerHTML = recog_text;
                             document.getElementById('speech_text-bg').innerHTML = recog_text;

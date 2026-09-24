@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <link href="https://fonts.googleapis.com/css?family=M+PLUS+Rounded+1c&display=swap" rel="stylesheet">
 
-    <title>Live Translation - Bilingual</title>
+    <title>Live Translation - Auto Bilingual</title>
 
     <style type="text/css">
         /* cousine-regular - latin */
@@ -155,7 +155,10 @@
             recognition.continuous = true;
 
             // Translation settings ---------------------------
-            var trans_sourcelang = 'en';
+            // Speech recognition language is fixed by the 'recog' URL parameter.
+            // Translation source language is AUTO-DETECTED by Google Apps Script
+            // using LanguageApp.translate(text, '', targetLanguage).
+            var trans_sourcelang = '';
             var trans_destlang1 = 'en';
             var trans_destlang2 = 'ms';
 
@@ -169,42 +172,33 @@
             var arg_trans1 = getParam('trans1');
             var arg_trans2 = getParam('trans2');
 
-            // Language setting ----------------------------
+            // Speech recognition language ----------------------------
             if (arg_recog != null && arg_recog !== '') {
                 recognition.lang = arg_recog;
-                trans_sourcelang = normalizeTranslationLanguage(arg_recog);
             }
 
-            // Backward compatibility: ?trans=... acts as target #1.
+            // Bilingual output targets. Source language is intentionally AUTO.
             if (arg_trans1 != null && arg_trans1 !== '') {
                 trans_destlang1 = normalizeTranslationLanguage(arg_trans1);
-            } else if (arg_trans != null && arg_trans !== '') {
-                trans_destlang1 = normalizeTranslationLanguage(arg_trans);
             } else {
-                trans_destlang1 = trans_sourcelang;
+                trans_destlang1 = 'en';
             }
 
-            // Target #2 defaults to the other language for EN/MS bilingual use.
             if (arg_trans2 != null && arg_trans2 !== '') {
                 trans_destlang2 = normalizeTranslationLanguage(arg_trans2);
-            } else if (trans_sourcelang === 'en') {
-                trans_destlang2 = 'ms';
-            } else if (trans_sourcelang === 'ms') {
-                trans_destlang2 = 'en';
             } else {
-                trans_destlang2 = trans_destlang1;
+                trans_destlang2 = 'ms';
             }
 
-            // If only ?trans=ms is supplied for English, show English + Malay.
-            if (arg_trans1 == null && arg_trans == 'ms' && trans_sourcelang === 'en') {
+            // Legacy single-target compatibility:
+            // ?trans=ms -> English + Malay
+            // ?trans=en -> English + Malay
+            if (arg_trans1 == null && arg_trans === 'ms') {
                 trans_destlang1 = 'en';
                 trans_destlang2 = 'ms';
-            }
-
-            // If only ?trans=en is supplied for Malay, show Malay + English.
-            if (arg_trans1 == null && arg_trans == 'en' && trans_sourcelang === 'ms') {
-                trans_destlang1 = 'ms';
-                trans_destlang2 = 'en';
+            } else if (arg_trans1 == null && arg_trans === 'en') {
+                trans_destlang1 = 'en';
+                trans_destlang2 = 'ms';
             }
 
             /////////////////////////////////////////////////////////
@@ -235,13 +229,9 @@
                 }, 100);
             };
 
-            function translateOne(text, sourceLang, targetLang, callback) {
-                // Same-language output: use the recognized text directly.
-                if (targetLang === sourceLang) {
-                    callback(text);
-                    return;
-                }
-
+            function translateOne(text, targetLang, callback) {
+                // Source language is deliberately blank. Google Apps Script
+                // auto-detects the source language for each utterance.
                 if (!gs_key) {
                     callback('[Missing gs_key]');
                     return;
@@ -253,7 +243,7 @@
 
                 var query = TRANS_URL
                     + '?text=' + encodeURIComponent(text)
-                    + '&source=' + encodeURIComponent(sourceLang)
+                    + '&source=' + encodeURIComponent('')
                     + '&target=' + encodeURIComponent(targetLang)
                     + '&prefix=' + encodeURIComponent(prefixName);
 
@@ -315,7 +305,7 @@
                         // Hide the raw speech line once a final result is available.
                         setText('speech_text', '');
 
-                        // One recognition -> two translation outputs.
+                        // One recognition -> two outputs. Source language is auto-detected upstream.
                         var resultsNeeded = 2;
                         var result1 = '';
                         var result2 = '';
@@ -328,12 +318,12 @@
                             }
                         }
 
-                        translateOne(recog_text, trans_sourcelang, trans_destlang1, function (text) {
+                        translateOne(recog_text, trans_destlang1, function (text) {
                             result1 = text;
                             done();
                         });
 
-                        translateOne(recog_text, trans_sourcelang, trans_destlang2, function (text) {
+                        translateOne(recog_text, trans_destlang2, function (text) {
                             result2 = text;
                             done();
                         });

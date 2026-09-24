@@ -176,7 +176,10 @@
             // Language setting ----------------------------
             if (arg_recog != null) {
                 recognition.lang = arg_recog;
-                trans_sourcelang = recognition.lang;
+
+                // Speech Recognition uses a full BCP-47 tag such as ms-MY.
+                // LanguageApp translation uses the base language code.
+                trans_sourcelang = arg_recog.split('-')[0];
             }
             if (arg_trans != null) {
                 trans_destlang = arg_trans;
@@ -188,24 +191,20 @@
 
             /////////////////////////////////////////////////////////
             // API settings ---------------------------
+
             // When the recognition result is returned ------------------
             recognition.onresult = function (event) {
                 var results = event.results;
+
                 for (var i = event.resultIndex; i < results.length; i++) {
                     if (results[i].isFinal) {
-                        // console.log(results);
-                        recog_text = results[i][0].transcript;
 
-                        // document.getElementById('speech_text-imb').innerHTML = recog_text;
-                        // document.getElementById('speech_text-bg').innerHTML = recog_text;
-                        // document.getElementById('speech_text-fg').innerHTML = recog_text;
+                        recog_text = results[i][0].transcript;
 
                         if (gs_key != null) {
 
-                            // Use JSONP instead of XMLHttpRequest.
-                            // This avoids the CORS restriction between GitHub Pages
-                            // and Google Apps Script ContentService.
-
+                            // JSONP is used instead of XMLHttpRequest because
+                            // GitHub Pages and Google Apps Script are different origins.
                             var prefixName =
                                 'handleTranslation_' + Date.now() + '_' +
                                 Math.random().toString(36).substring(2, 8);
@@ -216,43 +215,10 @@
                                 + '&target=' + encodeURIComponent(trans_destlang)
                                 + '&prefix=' + encodeURIComponent(prefixName);
 
-                            // Google Apps Script JSONP calls this global function.
-                            window[prefixName] = function (data) {
-
-                                try {
-
-                                    if (data && typeof data.translatedText !== 'undefined') {
-                                        document.getElementById('trans_text-imb').innerHTML = data.translatedText;
-                                        document.getElementById('trans_text-bg').innerHTML = data.translatedText;
-                                        document.getElementById('trans_text-fg').innerHTML = data.translatedText;
-                                    } else {
-                                        console.error('Unexpected translation response:', data);
-                                    }
-
-                                } finally {
-
-                                    try {
-                                        delete window[prefixName];
-                                    } catch (e) {
-                                        window[prefixName] = undefined;
-                                    }
-
-                                    if (script.parentNode) {
-                                        script.parentNode.removeChild(script);
-                                    }
-
-                                    vr_function();
-                                }
-                            };
-
-                            // Load the Apps Script JSONP response as a script.
                             var script = document.createElement('script');
-                            script.src = query;
-                            script.async = true;
+                            var completed = false;
 
-                            script.onerror = function (error) {
-                                console.error('Translation request failed:', error);
-
+                            function cleanup() {
                                 if (script.parentNode) {
                                     script.parentNode.removeChild(script);
                                 }
@@ -262,27 +228,57 @@
                                 } catch (e) {
                                     window[prefixName] = undefined;
                                 }
+                            }
 
+                            window[prefixName] = function (data) {
+                                completed = true;
+
+                                if (data && typeof data.translatedText !== 'undefined') {
+                                    document.getElementById('trans_text-imb').innerHTML = data.translatedText;
+                                    document.getElementById('trans_text-bg').innerHTML = data.translatedText;
+                                    document.getElementById('trans_text-fg').innerHTML = data.translatedText;
+                                } else {
+                                    console.error('Unexpected translation response:', data);
+                                }
+
+                                cleanup();
+                                vr_function();
+                            };
+
+                            script.src = query;
+                            script.async = true;
+
+                            script.onerror = function (error) {
+                                if (completed) return;
+
+                                console.error('Translation request failed:', error);
+                                cleanup();
                                 vr_function();
                             };
 
                             document.head.appendChild(script);
 
                         } else {
+
                             document.getElementById('speech_text-imb').innerHTML = recog_text;
                             document.getElementById('speech_text-bg').innerHTML = recog_text;
                             document.getElementById('speech_text-fg').innerHTML = recog_text;
                             vr_function();
                         }
-                    }
-                    else {
-                        document.getElementById('speech_text-imb').innerHTML = "<< " + results[i][0].transcript + " >>";
-                        document.getElementById('speech_text-bg').innerHTML = "<< " + results[i][0].transcript + " >>";
-                        document.getElementById('speech_text-fg').innerHTML = "<< " + results[i][0].transcript + " >>";
+
+                    } else {
+
+                        document.getElementById('speech_text-imb').innerHTML =
+                            "<< " + results[i][0].transcript + " >>";
+                        document.getElementById('speech_text-bg').innerHTML =
+                            "<< " + results[i][0].transcript + " >>";
+                        document.getElementById('speech_text-fg').innerHTML =
+                            "<< " + results[i][0].transcript + " >>";
                         flag_speech = 1;
                     }
                 }
-            }
+            };
+
             flag_speech = 0;
             recognition.start();
         }

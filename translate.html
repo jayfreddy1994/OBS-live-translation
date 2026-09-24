@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <link href="https://fonts.googleapis.com/css?family=M+PLUS+Rounded+1c&display=swap" rel="stylesheet">
 
-    <title>Live Translation</title>
+    <title>Live Translation - Bilingual</title>
 
     <style type="text/css">
         /* cousine-regular - latin */
@@ -100,6 +100,13 @@
             margin: auto;
             /* -webkit-text-stroke: 0px #FFFFFF; */
         }
+
+        .translation-line {
+            position: relative;
+            display: block;
+            width: 100%;
+            min-height: 1.25em;
+        }
     </style>
 
     <script>
@@ -108,8 +115,7 @@
         // Speech recognition starts when window is loaded --------------
         window.onload = function () {
             vr_function();
-        }
-
+        };
 
         // Function for getting URL parameters ---------------------------
         function getParam(name, url) {
@@ -122,165 +128,231 @@
             return decodeURIComponent(results[2].replace(/\+/g, " "));
         }
 
+        function setText(idBase, text) {
+            document.getElementById(idBase + '-imb').innerHTML = text;
+            document.getElementById(idBase + '-bg').innerHTML = text;
+            document.getElementById(idBase + '-fg').innerHTML = text;
+        }
+
+        function normalizeTranslationLanguage(lang) {
+            if (!lang) return '';
+            return lang.split('-')[0].toLowerCase();
+        }
+
         function vr_function() {
-            window.SpeechRecognition = window.SpeechRecognition || webkitSpeechRecognition;
+            window.SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+                setText('speech_text', 'Speech Recognition is not supported in this browser.');
+                return;
+            }
 
             // Settings for voice recognition ----------------------
-            var recognition = new webkitSpeechRecognition();
+            var RecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+            var recognition = new RecognitionCtor();
             recognition.lang = 'en';
             recognition.interimResults = true;
             recognition.continuous = true;
-            var recog_text = '';
-            var trans_text = '';
 
             // Translation settings ---------------------------
             var trans_sourcelang = 'en';
-            var trans_destlang = 'pt-BR';
+            var trans_destlang1 = 'en';
+            var trans_destlang2 = 'ms';
 
             var gs_key = getParam('gs_key');
-
             var TRANS_URL = 'https://script.google.com/macros/s/' + gs_key + '/exec';
-            var query = ''
-
-            ///////////////////////////////////////////////////////////
-            // Events ---------------------------------
-            recognition.onsoundstart = function () {
-                // document.getElementById('status').innerHTML = "Listening";
-            };
-            recognition.onspeechstart = function () {
-                // document.getElementById('status').innerHTML = "Listening";
-            };
-            recognition.onnomatch = function () {
-                // document.getElementById('status').innerHTML = "Please try again";
-            };
-            recognition.onerror = function () {
-                // document.getElementById('status').innerHTML = "Error";
-                vr_function();
-            };
-            recognition.onsoundend = function () {
-                // document.getElementById('status').innerHTML = "Stopping";
-                recognition.stop()
-                vr_function();
-            };
-            recognition.onspeechend = function () {
-                // document.getElementById('status').innerHTML = "Stopping";
-                recognition.stop()
-                vr_function();
-            };
 
             //////////////////////////////////////////////////////////
             // URL parameters -------------------
-            arg_recog = getParam('recog');
-            arg_trans = getParam('trans');
+            var arg_recog = getParam('recog');
+            var arg_trans = getParam('trans');
+            var arg_trans1 = getParam('trans1');
+            var arg_trans2 = getParam('trans2');
 
             // Language setting ----------------------------
-            if (arg_recog != null) {
+            if (arg_recog != null && arg_recog !== '') {
                 recognition.lang = arg_recog;
-
-                // Speech Recognition uses a full BCP-47 tag such as ms-MY.
-                // LanguageApp translation uses the base language code.
-                trans_sourcelang = arg_recog.split('-')[0];
-            }
-            if (arg_trans != null) {
-                trans_destlang = arg_trans;
+                trans_sourcelang = normalizeTranslationLanguage(arg_recog);
             }
 
-            if (trans_sourcelang == trans_destlang) {
-                alert("ERROR! Please set different language between recog and trans!\nYou set both [" + trans_sourcelang + "]!");
+            // Backward compatibility: ?trans=... acts as target #1.
+            if (arg_trans1 != null && arg_trans1 !== '') {
+                trans_destlang1 = normalizeTranslationLanguage(arg_trans1);
+            } else if (arg_trans != null && arg_trans !== '') {
+                trans_destlang1 = normalizeTranslationLanguage(arg_trans);
+            } else {
+                trans_destlang1 = trans_sourcelang;
+            }
+
+            // Target #2 defaults to the other language for EN/MS bilingual use.
+            if (arg_trans2 != null && arg_trans2 !== '') {
+                trans_destlang2 = normalizeTranslationLanguage(arg_trans2);
+            } else if (trans_sourcelang === 'en') {
+                trans_destlang2 = 'ms';
+            } else if (trans_sourcelang === 'ms') {
+                trans_destlang2 = 'en';
+            } else {
+                trans_destlang2 = trans_destlang1;
+            }
+
+            // If only ?trans=ms is supplied for English, show English + Malay.
+            if (arg_trans1 == null && arg_trans == 'ms' && trans_sourcelang === 'en') {
+                trans_destlang1 = 'en';
+                trans_destlang2 = 'ms';
+            }
+
+            // If only ?trans=en is supplied for Malay, show Malay + English.
+            if (arg_trans1 == null && arg_trans == 'en' && trans_sourcelang === 'ms') {
+                trans_destlang1 = 'ms';
+                trans_destlang2 = 'en';
             }
 
             /////////////////////////////////////////////////////////
-            // API settings ---------------------------
+            // Events ---------------------------------
+            recognition.onsoundstart = function () {};
+            recognition.onspeechstart = function () {};
+            recognition.onnomatch = function () {};
 
+            recognition.onerror = function (event) {
+                console.warn('Speech recognition error:', event && event.error ? event.error : event);
+                try { recognition.stop(); } catch (e) {}
+                setTimeout(function () {
+                    try { recognition.start(); } catch (e) {}
+                }, 250);
+            };
+
+            recognition.onsoundend = function () {
+                try { recognition.stop(); } catch (e) {}
+                setTimeout(function () {
+                    try { recognition.start(); } catch (e) {}
+                }, 100);
+            };
+
+            recognition.onspeechend = function () {
+                try { recognition.stop(); } catch (e) {}
+                setTimeout(function () {
+                    try { recognition.start(); } catch (e) {}
+                }, 100);
+            };
+
+            function translateOne(text, sourceLang, targetLang, callback) {
+                // Same-language output: use the recognized text directly.
+                if (targetLang === sourceLang) {
+                    callback(text);
+                    return;
+                }
+
+                if (!gs_key) {
+                    callback('[Missing gs_key]');
+                    return;
+                }
+
+                var prefixName =
+                    'handleTranslation_' + Date.now() + '_' +
+                    Math.random().toString(36).substring(2, 8);
+
+                var query = TRANS_URL
+                    + '?text=' + encodeURIComponent(text)
+                    + '&source=' + encodeURIComponent(sourceLang)
+                    + '&target=' + encodeURIComponent(targetLang)
+                    + '&prefix=' + encodeURIComponent(prefixName);
+
+                var script = document.createElement('script');
+                var finished = false;
+
+                function cleanup() {
+                    if (script.parentNode) {
+                        script.parentNode.removeChild(script);
+                    }
+                    try {
+                        delete window[prefixName];
+                    } catch (e) {
+                        window[prefixName] = undefined;
+                    }
+                }
+
+                window[prefixName] = function (data) {
+                    if (finished) return;
+                    finished = true;
+
+                    var result = '';
+                    if (data && typeof data.translatedText !== 'undefined') {
+                        result = data.translatedText;
+                    } else {
+                        console.error('Unexpected translation response:', data);
+                        result = '[Translation error]';
+                    }
+
+                    cleanup();
+                    callback(result);
+                };
+
+                script.src = query;
+                script.async = true;
+
+                script.onerror = function (error) {
+                    if (finished) return;
+                    finished = true;
+                    console.error('Translation request failed:', error);
+                    cleanup();
+                    callback('[Translation error]');
+                };
+
+                document.head.appendChild(script);
+            }
+
+            //////////////////////////////////////////////////////////
             // When the recognition result is returned ------------------
             recognition.onresult = function (event) {
                 var results = event.results;
 
                 for (var i = event.resultIndex; i < results.length; i++) {
                     if (results[i].isFinal) {
+                        var recog_text = results[i][0].transcript.trim();
 
-                        recog_text = results[i][0].transcript;
+                        if (!recog_text) continue;
 
-                        if (gs_key != null) {
+                        // Hide the raw speech line once a final result is available.
+                        setText('speech_text', '');
 
-                            // JSONP is used instead of XMLHttpRequest because
-                            // GitHub Pages and Google Apps Script are different origins.
-                            var prefixName =
-                                'handleTranslation_' + Date.now() + '_' +
-                                Math.random().toString(36).substring(2, 8);
+                        // One recognition -> two translation outputs.
+                        var resultsNeeded = 2;
+                        var result1 = '';
+                        var result2 = '';
 
-                            query = TRANS_URL
-                                + '?text=' + encodeURIComponent(recog_text)
-                                + '&source=' + encodeURIComponent(trans_sourcelang)
-                                + '&target=' + encodeURIComponent(trans_destlang)
-                                + '&prefix=' + encodeURIComponent(prefixName);
-
-                            var script = document.createElement('script');
-                            var completed = false;
-
-                            function cleanup() {
-                                if (script.parentNode) {
-                                    script.parentNode.removeChild(script);
-                                }
-
-                                try {
-                                    delete window[prefixName];
-                                } catch (e) {
-                                    window[prefixName] = undefined;
-                                }
+                        function done() {
+                            resultsNeeded -= 1;
+                            if (resultsNeeded === 0) {
+                                setText('trans_text1', result1);
+                                setText('trans_text2', result2);
                             }
-
-                            window[prefixName] = function (data) {
-                                completed = true;
-
-                                if (data && typeof data.translatedText !== 'undefined') {
-                                    document.getElementById('trans_text-imb').innerHTML = data.translatedText;
-                                    document.getElementById('trans_text-bg').innerHTML = data.translatedText;
-                                    document.getElementById('trans_text-fg').innerHTML = data.translatedText;
-                                } else {
-                                    console.error('Unexpected translation response:', data);
-                                }
-
-                                cleanup();
-                                vr_function();
-                            };
-
-                            script.src = query;
-                            script.async = true;
-
-                            script.onerror = function (error) {
-                                if (completed) return;
-
-                                console.error('Translation request failed:', error);
-                                cleanup();
-                                vr_function();
-                            };
-
-                            document.head.appendChild(script);
-
-                        } else {
-
-                            document.getElementById('speech_text-imb').innerHTML = recog_text;
-                            document.getElementById('speech_text-bg').innerHTML = recog_text;
-                            document.getElementById('speech_text-fg').innerHTML = recog_text;
-                            vr_function();
                         }
 
-                    } else {
+                        translateOne(recog_text, trans_sourcelang, trans_destlang1, function (text) {
+                            result1 = text;
+                            done();
+                        });
 
-                        document.getElementById('speech_text-imb').innerHTML =
-                            "<< " + results[i][0].transcript + " >>";
-                        document.getElementById('speech_text-bg').innerHTML =
-                            "<< " + results[i][0].transcript + " >>";
-                        document.getElementById('speech_text-fg').innerHTML =
-                            "<< " + results[i][0].transcript + " >>";
+                        translateOne(recog_text, trans_sourcelang, trans_destlang2, function (text) {
+                            result2 = text;
+                            done();
+                        });
+                    } else {
+                        setText('speech_text', '<< ' + results[i][0].transcript + ' >>');
                         flag_speech = 1;
                     }
                 }
             };
 
             flag_speech = 0;
-            recognition.start();
+
+            try {
+                recognition.start();
+            } catch (e) {
+                setTimeout(function () {
+                    try { recognition.start(); } catch (e2) {}
+                }, 250);
+            }
         }
     </script>
 </head>
@@ -305,14 +377,16 @@
                         [ TRANSLATING HERE ]
                     </div>
 
-                    <div class="stroke-single-bg" id="trans_text-bg">
-
+                    <div class="translation-line" id="translation_line1">
+                        <div class="stroke-single-bg" id="trans_text1-bg"></div>
+                        <div class="stroke-single-fg" id="trans_text1-fg"></div>
+                        <div class="stroke-single-imb" id="trans_text1-imb"></div>
                     </div>
-                    <div class="stroke-single-fg" id="trans_text-fg">
 
-                    </div>
-                    <div class="stroke-single-imb" id="trans_text-imb">
-
+                    <div class="translation-line" id="translation_line2">
+                        <div class="stroke-single-bg" id="trans_text2-bg"></div>
+                        <div class="stroke-single-fg" id="trans_text2-fg"></div>
+                        <div class="stroke-single-imb" id="trans_text2-imb"></div>
                     </div>
                 </td>
             </tr>
@@ -345,11 +419,13 @@
 
 
     if (getParam('bgcolor') != null) {
-        document.getElementById("trans_text-imb").style.webkitTextStrokeColor = getParam('bgcolor');
+        document.getElementById("trans_text1-imb").style.webkitTextStrokeColor = getParam('bgcolor');
+        document.getElementById("trans_text2-imb").style.webkitTextStrokeColor = getParam('bgcolor');
     }
 
     if (getParam('st_width') != null) {
-        document.getElementById("trans_text-imb").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
+        document.getElementById("trans_text1-imb").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
+        document.getElementById("trans_text2-imb").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
     }
 
 
@@ -381,15 +457,18 @@
 
     // Translation result text
     if (getParam('color') != null) {
-        document.getElementById("trans_text-fg").style.color = getParam('color');
+        document.getElementById("trans_text1-fg").style.color = getParam('color');
+        document.getElementById("trans_text2-fg").style.color = getParam('color');
     }
 
     if (getParam('st_color') != null) {
-        document.getElementById("trans_text-bg").style.webkitTextStrokeColor = getParam('st_color');
+        document.getElementById("trans_text1-bg").style.webkitTextStrokeColor = getParam('st_color');
+        document.getElementById("trans_text2-bg").style.webkitTextStrokeColor = getParam('st_color');
     }
 
     if (getParam('st_width') != null) {
-        document.getElementById("trans_text-bg").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
+        document.getElementById("trans_text1-bg").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
+        document.getElementById("trans_text2-bg").style.webkitTextStrokeWidth = getParam('st_width') + 'pt';
     }
 
     function getParam(name, url) {
